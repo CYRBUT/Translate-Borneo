@@ -35,9 +35,9 @@ const NavButton: React.FC<{
   isActive: boolean;
   onClick: () => void;
 }> = ({ label, icon, isActive, onClick }) => {
-  const baseClasses = "flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium";
-  const activeClasses = "bg-brand-primary text-white shadow-lg";
-  const inactiveClasses = "bg-light-card dark:bg-dark-card hover:bg-light-border dark:hover:bg-dark-border";
+  const baseClasses = "flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium transform focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 dark:focus:ring-offset-dark-bg";
+  const activeClasses = "bg-brand-primary text-white shadow-lg scale-100";
+  const inactiveClasses = "bg-light-card dark:bg-dark-card hover:bg-light-border dark:hover:bg-dark-border hover:scale-105";
   return (
     <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
       {icon}
@@ -86,7 +86,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView, onAdminCli
             isActive={currentView === View.ADMIN}
             onClick={onAdminClick}
           />
-           <button onClick={toggleTheme} className="p-2 rounded-lg transition-colors duration-300 hover:bg-light-border dark:hover:bg-dark-border" aria-label="Toggle theme">
+           <button onClick={toggleTheme} className="p-2 rounded-lg transition-all duration-300 hover:bg-light-border dark:hover:bg-dark-border transform hover:scale-110" aria-label="Toggle theme">
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
         </div>

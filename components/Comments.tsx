@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Comment, RatingSummary, UserRole } from '../types';
 import { MOCK_COMMENTS } from '../constants';
@@ -51,9 +50,10 @@ const findAndDeleteComment = (comments: Comment[], id: string): Comment[] => {
     });
 }
 
-const CommentCard: React.FC<{ comment: Comment; onReply: (id: string, reply: Comment) => void; onDelete: (id: string) => void; onLike: (id: string) => void; isAdmin: boolean; isLiked: boolean; level?: number }> = ({ comment, onReply, onDelete, onLike, isAdmin, isLiked, level = 0 }) => {
+const CommentCard: React.FC<{ comment: Comment; onReply: (id: string, reply: Comment) => void; onDelete: (id: string) => void; onLike: (id: string) => void; isAdmin: boolean; likedComments: Set<string>; level?: number }> = ({ comment, onReply, onDelete, onLike, isAdmin, likedComments, level = 0 }) => {
     const [showReplyForm, setShowReplyForm] = useState(false);
     const [replyMessage, setReplyMessage] = useState('');
+    const isThisCommentLiked = likedComments.has(comment.id);
 
     const handleReplySubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -96,8 +96,8 @@ const CommentCard: React.FC<{ comment: Comment; onReply: (id: string, reply: Com
                 </div>
                 <p className="text-dark-text dark:text-light-text mb-2">{comment.message}</p>
                 <div className="flex items-center space-x-4 text-sm text-medium-light-text dark:text-medium-text">
-                    <button onClick={handleLike} disabled={isLiked} className="flex items-center space-x-1 hover:text-brand-primary transition-colors disabled:cursor-not-allowed disabled:text-red-500">
-                        {isLiked ? <HeartSolidIcon className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5" />}
+                    <button onClick={handleLike} disabled={isThisCommentLiked} className="flex items-center space-x-1 hover:text-brand-primary transition-colors disabled:cursor-not-allowed disabled:text-red-500">
+                        {isThisCommentLiked ? <HeartSolidIcon className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5" />}
                         <span>{comment.likes}</span>
                     </button>
                     <button onClick={() => setShowReplyForm(!showReplyForm)} className="flex items-center space-x-1 hover:text-brand-primary transition-colors">
@@ -127,7 +127,7 @@ const CommentCard: React.FC<{ comment: Comment; onReply: (id: string, reply: Com
             )}
             {comment.replies && comment.replies.length > 0 && (
                 <div className="mt-4 space-y-4">
-                    {comment.replies.map(reply => <CommentCard key={reply.id} comment={reply} onReply={onReply} onDelete={onDelete} onLike={onLike} isAdmin={isAdmin} isLiked={isLiked} level={level + 1} />)}
+                    {comment.replies.map(reply => <CommentCard key={reply.id} comment={reply} onReply={onReply} onDelete={onDelete} onLike={onLike} isAdmin={isAdmin} likedComments={likedComments} level={level + 1} />)}
                 </div>
             )}
         </div>
@@ -205,7 +205,7 @@ const Comments: React.FC<{ userRole: UserRole }> = ({ userRole }) => {
             </div>
             <div className="md:col-span-2 bg-light-card dark:bg-dark-card p-6 rounded-lg shadow-lg">
                 <h3 className="text-lg font-semibold mb-4">Comments ({comments.length})</h3>
-                <div className="space-y-6 max-h-[calc(100vh-20rem)] overflow-y-auto pr-4">{comments.map((comment) => (<div key={comment.id} className="border-b border-light-border dark:border-dark-border pb-4 last:border-b-0"><CommentCard comment={comment} onReply={handleReplyComment} onDelete={handleDeleteComment} onLike={handleLikeComment} isAdmin={isAdmin} isLiked={likedComments.has(comment.id) || (comment.replies && comment.replies.some(r => likedComments.has(r.id)))} /></div>))}</div>
+                <div className="space-y-6 max-h-[calc(100vh-20rem)] overflow-y-auto pr-4">{comments.map((comment) => (<div key={comment.id} className="border-b border-light-border dark:border-dark-border pb-4 last:border-b-0"><CommentCard comment={comment} onReply={handleReplyComment} onDelete={handleDeleteComment} onLike={handleLikeComment} isAdmin={isAdmin} likedComments={likedComments} /></div>))}</div>
             </div>
         </div>
     );

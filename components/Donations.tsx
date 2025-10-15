@@ -1,13 +1,19 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Donation } from '../types';
+import { Donation, UserRole } from '../types';
 import { MOCK_DONATIONS } from '../constants';
 import DonationModal from './DonationModal';
 import { GiftIcon, StarIcon } from './icons/HeroIcons';
 
-const Donations: React.FC = () => {
+const DONATION_GOAL = 1000000; // Rp 1,000,000
+
+interface DonationsProps {
+    userRole: UserRole;
+}
+
+const Donations: React.FC<DonationsProps> = ({ userRole }) => {
     const [donations, setDonations] = useState<Donation[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const isAdmin = userRole === UserRole.ADMIN;
 
     useEffect(() => {
         try {
@@ -26,9 +32,15 @@ const Donations: React.FC = () => {
         }
     }, [donations]);
 
-    const { topDonors } = useMemo(() => {
+    const { topDonors, totalDonated, progressPercentage } = useMemo(() => {
         const sortedDonors = [...donations].sort((a, b) => b.amount - a.amount).slice(0, 3);
-        return { topDonors: sortedDonors };
+        const total = donations.reduce((sum, d) => sum + d.amount, 0);
+        const percentage = Math.min((total / DONATION_GOAL) * 100, 100);
+        return { 
+            topDonors: sortedDonors,
+            totalDonated: total,
+            progressPercentage: percentage,
+        };
     }, [donations]);
 
     const handleDonationSent = () => {
@@ -53,6 +65,21 @@ const Donations: React.FC = () => {
                         Your contribution helps us preserve and promote the beautiful languages of Borneo for future generations.
                     </p>
                 </div>
+
+                {isAdmin && (
+                    <div className="mb-8 px-2 animate-fade-in">
+                        <div className="flex justify-between items-end mb-1 text-sm">
+                            <span className="font-semibold text-dark-text dark:text-light-text">Raised: Rp {totalDonated.toLocaleString('id-ID')}</span>
+                            <span className="font-semibold text-medium-light-text dark:text-medium-text">Goal: Rp {DONATION_GOAL.toLocaleString('id-ID')}</span>
+                        </div>
+                        <div className="w-full bg-light-border dark:bg-dark-border rounded-full h-4">
+                            <div 
+                                className="bg-gradient-to-r from-green-400 to-teal-500 h-4 rounded-full transition-all duration-1000 ease-out" 
+                                style={{ width: `${progressPercentage}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="text-center mb-8">
                      <button 

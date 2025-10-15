@@ -1,219 +1,271 @@
-import React, { useState, useEffect } from 'react';
-import { getCulturalFacts } from '../services/geminiService';
+import React, { useState, useEffect, useCallback } from 'react';
+import { getCulturalFacts, generateImageForFact } from '../services/geminiService';
+import { CulturalPost, UserRole } from '../types';
 import Spinner from './Spinner';
-import { SparklesIcon, ArrowUpOnSquareIcon, TrashIcon, XMarkIcon } from './icons/HeroIcons';
-import { UserRole, CulturalPost } from '../types';
-
-const CULTURAL_POSTS_KEY = 'culturalPosts';
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+import { SparklesIcon, HeartIcon, HeartSolidIcon, ShareIcon, TrashIcon, PencilSquareIcon, CheckCircleIcon, XMarkIcon } from './icons/HeroIcons';
 
 interface LearnProps {
     userRole: UserRole;
 }
 
+const PostCard: React.FC<{ 
+    post: CulturalPost; 
+    isAdmin: boolean;
+    isLiked: boolean;
+    onLike: (id: string) => void;
+    onShare: (text: string) => void;
+    onDelete: (id: string) => void;
+    onSave: (id: string, newText: string) => void;
+}> = ({ post, isAdmin, isLiked, onLike, onShare, onDelete, onSave }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedText, setEditedText] = useState(post.text);
+
+    const handleSave = () => {
+        onSave(post.id, editedText);
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditedText(post.text);
+        setIsEditing(false);
+    }
+    
+    const renderImage = () => {
+        if (post.imageUrl && (post.imageUrl.startsWith('data:image') || post.imageUrl.startsWith('https://'))) {
+            return <img src={post.imageUrl} alt="Cultural visualization" className="w-full h-56 object-cover" />;
+        }
+        
+        let content;
+        if (post.imageUrl === 'error') {
+            content = <span className="text-red-500 text-sm px-2 text-center">Failed to generate image</span>;
+        } else {
+            content = (
+                <div className="flex flex-col items-center">
+                    <div className="border-4 border-dark-border/50 border-t-brand-primary rounded-full w-8 h-8 animate-spin"></div>
+                    <span className="text-sm mt-2 text-medium-light-text dark:text-medium-text">Generating Image...</span>
+                </div>
+            );
+        }
+
+        return (
+            <div className="w-full h-56 bg-light-border dark:bg-dark-border flex items-center justify-center">
+                {content}
+            </div>
+        );
+    };
+
+    return (
+        <div className="bg-light-card dark:bg-dark-card rounded-lg shadow-lg flex flex-col justify-between transform transition-all duration-300 hover:scale-[1.02] hover:shadow-xl animate-fade-in group">
+            {renderImage()}
+            <div className="p-4 flex-grow">
+                {isEditing ? (
+                     <textarea
+                        value={editedText}
+                        onChange={(e) => setEditedText(e.target.value)}
+                        className="w-full h-full p-2 bg-light-border dark:bg-dark-border rounded resize-none focus:outline-none focus:ring-2 focus:ring-brand-primary text-sm"
+                    />
+                ) : (
+                     <p className="text-dark-text dark:text-light-text leading-relaxed">{post.text}</p>
+                )}
+            </div>
+            <div className="p-4 border-t border-light-border dark:border-dark-border/50 flex justify-between items-center">
+                <div className="flex items-center space-x-4">
+                    <button onClick={() => onLike(post.id)} className="flex items-center space-x-1 text-medium-light-text dark:text-medium-text hover:text-brand-primary transition-colors disabled:cursor-not-allowed disabled:text-red-500">
+                        {isLiked ? <HeartSolidIcon className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5" />}
+                        <span className="text-sm font-medium">{post.likes ?? 0}</span>
+                    </button>
+                    <button onClick={() => onShare(post.text)} className="flex items-center space-x-1 text-medium-light-text dark:text-medium-text hover:text-brand-primary transition-colors">
+                        <ShareIcon className="w-5 h-5" />
+                    </button>
+                </div>
+                {isAdmin && (
+                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         {isEditing ? (
+                            <>
+                                <button onClick={handleSave} className="text-green-500"><CheckCircleIcon className="h-6 w-6" /></button>
+                                <button onClick={handleCancel} className="text-red-500"><XMarkIcon className="h-6 w-6" /></button>
+                            </>
+                        ) : (
+                             <>
+                                <button onClick={() => setIsEditing(true)} className="text-medium-light-text dark:text-medium-text hover:text-brand-primary"><PencilSquareIcon className="h-5 w-5" /></button>
+                                <button onClick={() => onDelete(post.id)} className="text-red-500"><TrashIcon className="h-5 w-5" /></button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
 const Learn: React.FC<LearnProps> = ({ userRole }) => {
-    const [facts, setFacts] = useState<string[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
     const [posts, setPosts] = useState<CulturalPost[]>([]);
-    const [newPost, setNewPost] = useState<{ image: File | null, text: string, imagePreview: string | null }>({ image: null, text: '', imagePreview: null });
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [isAdding, setIsAdding] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+    const [showCopyToast, setShowCopyToast] = useState(false);
     const isAdmin = userRole === UserRole.ADMIN;
 
     useEffect(() => {
-        fetchFacts();
         try {
-            const storedPosts = localStorage.getItem(CULTURAL_POSTS_KEY);
-            setPosts(storedPosts ? JSON.parse(storedPosts) : []);
+            const storedLikes = localStorage.getItem('likedCulturalPosts');
+            setLikedPosts(storedLikes ? new Set(JSON.parse(storedLikes)) : new Set());
         } catch (e) {
-            setPosts([]);
+            console.error("Failed to parse liked posts from localStorage", e);
+            setLikedPosts(new Set());
         }
     }, []);
 
-    const fetchFacts = async () => {
-        setIsLoading(true);
+    useEffect(() => {
+        try {
+            localStorage.setItem('likedCulturalPosts', JSON.stringify(Array.from(likedPosts)));
+        } catch (e) {
+            console.error("Failed to save liked posts to localStorage", e);
+        }
+    }, [likedPosts]);
+
+    const fetchCulturalContent = useCallback(async (append = false) => {
+        if (!append) {
+            setIsLoading(true);
+            setPosts([]);
+        } else {
+            setIsAdding(true);
+        }
         setError(null);
+
         try {
-            const newFacts = await getCulturalFacts();
-            setFacts(newFacts);
+            const facts = await getCulturalFacts();
+            const newPostStubs: CulturalPost[] = facts.map((fact, index) => ({
+                id: `fact-${Date.now()}-${index}`,
+                text: fact,
+                imageUrl: '', // Placeholder for loading state
+                date: new Date().toISOString(),
+                likes: Math.floor(Math.random() * 25), // Add some initial random likes for appearance
+            }));
+
+            setPosts(prev => append ? [...prev, ...newPostStubs] : newPostStubs);
+            if (!append) setIsLoading(false);
+
+            newPostStubs.forEach(async (postStub) => {
+                try {
+                    const imageUrl = await generateImageForFact(postStub.text);
+                    setPosts(currentPosts =>
+                        currentPosts.map(p => p.id === postStub.id ? { ...p, imageUrl } : p)
+                    );
+                } catch (imageError) {
+                    console.error(`Failed to generate image for fact: "${postStub.text}"`, imageError);
+                    setPosts(currentPosts =>
+                        currentPosts.map(p => p.id === postStub.id ? { ...p, imageUrl: 'error' } : p)
+                    );
+                }
+            });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load cultural facts.');
+            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            if (!append) setIsLoading(false);
         } finally {
-            setIsLoading(false);
+            if (append) setIsAdding(false);
         }
+    }, []);
+
+    useEffect(() => {
+        fetchCulturalContent(false);
+    }, [fetchCulturalContent]);
+
+    const handleLike = (id: string) => {
+        if (likedPosts.has(id)) return;
+        setPosts(posts.map(p => p.id === id ? { ...p, likes: (p.likes || 0) + 1 } : p));
+        setLikedPosts(prev => new Set(prev).add(id));
     };
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const previewUrl = URL.createObjectURL(file);
-            setNewPost(prev => ({ ...prev, image: file, imagePreview: previewUrl }));
-        }
+    const handleShare = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setShowCopyToast(true);
+        setTimeout(() => setShowCopyToast(false), 2000);
     };
 
-    const handlePostSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newPost.image || !newPost.text.trim()) return;
-
-        try {
-            const imageUrl = await fileToBase64(newPost.image);
-            const post: CulturalPost = {
-                id: `post-${Date.now()}`,
-                imageUrl,
-                text: newPost.text,
-                date: new Date().toISOString()
-            };
-            const updatedPosts = [post, ...posts];
-            setPosts(updatedPosts);
-            localStorage.setItem(CULTURAL_POSTS_KEY, JSON.stringify(updatedPosts));
-            setNewPost({ image: null, text: '', imagePreview: null });
-        } catch (error) {
-            console.error("Error creating post:", error);
-        }
+    const handleDelete = (id: string) => {
+        setPosts(posts.filter(p => p.id !== id));
     };
 
-    const handleDeletePost = (id: string) => {
-        const updatedPosts = posts.filter(p => p.id !== id);
-        setPosts(updatedPosts);
-        localStorage.setItem(CULTURAL_POSTS_KEY, JSON.stringify(updatedPosts));
+     const handleSavePost = (id: string, newText: string) => {
+        setPosts(posts.map(p => p.id === id ? { ...p, text: newText } : p));
     };
-    
-    const formatDateTime = (dateString: string) => 
-        new Date(dateString).toLocaleString('id-ID', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        }).replace(/\./g, ':');
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-64">
+                <Spinner />
+                <p className="mt-4 text-medium-light-text dark:text-medium-text">Fetching cultural facts...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="text-center text-red-500 dark:text-red-400 bg-red-500/10 p-4 rounded-lg">
+                <p className="font-semibold">Failed to load content</p>
+                <p>{error}</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="max-w-7xl mx-auto animate-slide-in-up">
-            <div className="relative rounded-lg overflow-hidden mb-12 shadow-lg">
-                <img 
-                    src="https://images.unsplash.com/photo-1588622872384-239b2a7597a3?q=80&w=2070&auto=format&fit=crop" 
-                    alt="Budaya Borneo" 
-                    className="w-full h-64 object-cover" 
-                />
-                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-center p-4">
-                    <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-                        Jelajahi Budaya Borneo
-                    </h1>
-                    <p className="text-lg text-gray-200 max-w-2xl">
-                        Temukan fakta menarik tentang bahasa dan tradisi masyarakat Dayak yang kaya dan beragam.
-                    </p>
-                </div>
+        <div className="max-w-6xl mx-auto animate-slide-in-up">
+            <div className="text-center mb-12">
+                <SparklesIcon className="mx-auto h-12 w-12 text-brand-accent" />
+                <h1 className="text-4xl font-bold mt-4 mb-2">Discover Borneo's Culture</h1>
+                <p className="text-lg text-medium-light-text dark:text-medium-text">
+                    Explore interesting facts about the Dayak people, their languages, and traditions, visualized by AI.
+                </p>
             </div>
-
-            {isAdmin && (
-                <div className="bg-light-card dark:bg-dark-card p-6 rounded-lg shadow-lg mb-12">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center"><ArrowUpOnSquareIcon className="mr-2" /> Admin: Unggah Konten Budaya</h3>
-                    <form onSubmit={handlePostSubmit} className="space-y-4">
-                        <div>
-                            <label htmlFor="image-upload" className="block text-sm font-medium text-medium-light-text dark:text-medium-text mb-1">Gambar</label>
-                            <input id="image-upload" type="file" accept="image/*" onChange={handleImageChange} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-primary/10 file:text-brand-primary hover:file:bg-brand-primary/20" required/>
-                            {newPost.imagePreview && <img src={newPost.imagePreview} alt="Preview" className="mt-4 rounded-lg max-h-48" />}
-                        </div>
-                         <div>
-                            <label htmlFor="text-content" className="block text-sm font-medium text-medium-light-text dark:text-medium-text mb-1">Deskripsi</label>
-                            <textarea id="text-content" value={newPost.text} onChange={e => setNewPost(prev => ({...prev, text: e.target.value}))} rows={4} className="w-full p-2 bg-light-border dark:bg-dark-border rounded resize-none focus:outline-none focus:ring-2 focus:ring-brand-primary" placeholder="Tulis deskripsi atau cerita tentang gambar..." required></textarea>
-                        </div>
-                        <button type="submit" className="bg-brand-primary text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-secondary transition-colors disabled:opacity-50">Unggah</button>
-                    </form>
-                </div>
-            )}
-
-            {posts.length > 0 && (
-                <div className="mb-12">
-                     <h2 className="text-2xl font-bold mb-6 text-center">Kisah dari Admin</h2>
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                         {posts.map(post => (
-                            <div key={post.id} className="group relative bg-light-card dark:bg-dark-card rounded-lg shadow-lg overflow-hidden flex flex-col">
-                                <img 
-                                    src={post.imageUrl} 
-                                    alt="Konten budaya" 
-                                    className="w-full h-48 object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300"
-                                    onClick={() => setSelectedImage(post.imageUrl)}
-                                />
-                                <div className="p-4 flex-grow">
-                                    <p className="text-xs text-medium-light-text dark:text-medium-text mb-2">{formatDateTime(post.date)}</p>
-                                    <p className="text-dark-text dark:text-light-text">{post.text}</p>
-                                </div>
-                                {isAdmin && (
-                                    <button onClick={() => handleDeletePost(post.id)} className="absolute top-2 right-2 bg-red-500/80 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Hapus unggahan">
-                                        <TrashIcon className="h-4 w-4" />
-                                    </button>
-                                )}
-                            </div>
-                         ))}
-                     </div>
-                </div>
-            )}
-
-            <h2 className="text-2xl font-bold mb-6 text-center">Fakta Cepat dari Gemini</h2>
-            {isLoading && (
-                <div className="flex justify-center items-center h-64">
-                    <Spinner />
-                </div>
-            )}
-
-            {error && (
-                <div className="text-center text-red-500 dark:text-red-400 bg-red-500/10 p-4 rounded-lg">
-                    <p><strong>Oops!</strong> {error}</p>
-                    <button onClick={fetchFacts} className="mt-2 px-4 py-1 bg-red-500 text-white rounded-md text-sm">
-                        Coba Lagi
-                    </button>
-                </div>
-            )}
-
-            {!isLoading && !error && (
-                <div className="space-y-6">
-                    {facts.map((fact, index) => (
-                        <div 
-                            key={index} 
-                            className="bg-light-card dark:bg-dark-card p-6 rounded-lg shadow-lg border-l-4 border-brand-accent animate-fade-in"
-                            style={{ animationDelay: `${index * 150}ms` }}
+            
+            {posts.length > 0 ? (
+                 <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {posts.map(post => (
+                            <PostCard 
+                                key={post.id} 
+                                post={post}
+                                isAdmin={isAdmin}
+                                isLiked={likedPosts.has(post.id)}
+                                onLike={handleLike}
+                                onShare={handleShare}
+                                onDelete={handleDelete}
+                                onSave={handleSavePost}
+                            />
+                        ))}
+                    </div>
+                     <div className="text-center mt-12">
+                        <button 
+                            onClick={() => fetchCulturalContent(true)}
+                            disabled={isAdding}
+                            className="bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold py-3 px-10 rounded-full hover:scale-105 transform transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center mx-auto"
                         >
-                            <p className="text-dark-text dark:text-light-text leading-relaxed">{fact}</p>
-                        </div>
-                    ))}
-                    <div className="text-center pt-6">
-                         <button 
-                            onClick={fetchFacts} 
-                            disabled={isLoading}
-                            className="bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold py-2 px-6 rounded-full hover:scale-105 transform transition-all duration-300 disabled:opacity-50 flex items-center mx-auto"
-                        >
-                            <SparklesIcon className="w-5 h-5 mr-2"/>
-                            Hasilkan Fakta Baru
+                            {isAdding ? (
+                                <>
+                                    <div className="border-2 border-white/50 border-t-white rounded-full w-5 h-5 animate-spin"></div>
+                                    <span className="ml-2">Generating...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <SparklesIcon className="h-5 w-5 mr-2" />
+                                    <span>Generate More</span>
+                                </>
+                            )}
                         </button>
                     </div>
+                </>
+            ) : (
+                <div className="text-center text-medium-light-text dark:text-medium-text mt-16">
+                    <p>No cultural facts could be loaded at this time.</p>
+                    <button onClick={() => fetchCulturalContent(false)} className="mt-4 text-brand-primary hover:underline">Try Again</button>
                 </div>
             )}
-
-            {selectedImage && (
-                <div
-                    className="fixed inset-0 bg-black/80 flex items-center justify-center z-[999] animate-fade-in"
-                    onClick={() => setSelectedImage(null)}
-                >
-                    <div className="relative p-4" onClick={(e) => e.stopPropagation()}>
-                        <img src={selectedImage} alt="Tampilan diperbesar" className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
-                        <button
-                            onClick={() => setSelectedImage(null)}
-                            className="absolute top-0 right-0 m-2 bg-white/80 text-black p-2 rounded-full hover:scale-110 transition-transform backdrop-blur-sm"
-                            aria-label="Tutup penampil gambar"
-                        >
-                            <XMarkIcon className="h-6 w-6" />
-                        </button>
-                    </div>
+            {showCopyToast && (
+                <div className="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg animate-fade-in">
+                    Fact copied to clipboard!
                 </div>
             )}
         </div>

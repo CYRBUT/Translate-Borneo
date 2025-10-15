@@ -1,11 +1,20 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Language, TranslationHistoryItem } from '../types';
-import { translateText, generateTextToSpeech } from '../services/geminiService';
-import { ArrowsRightLeftIcon, DocumentDuplicateIcon, SpeakerWaveIcon, TrashIcon, ClockIcon } from './icons/HeroIcons';
+import { Language, TranslationHistoryItem, TextAnalysis } from '../types';
+import { translateTextStream, generateTextToSpeech, analyzeText } from '../services/geminiService';
+import { ArrowsRightLeftIcon, DocumentDuplicateIcon, SpeakerWaveIcon, TrashIcon, ClockIcon, SparklesIcon, XCircleIcon, MicrophoneIcon } from './icons/HeroIcons';
 import Spinner from './Spinner';
 import LanguageSelector from './LanguageSelector';
 import { LANGUAGE_OPTIONS } from '../constants';
+
+// Browser compatibility check for SpeechRecognition
+const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+
+if (recognition) {
+    recognition.continuous = false;
+    recognition.lang = 'id-ID';
+    recognition.interimResults = false;
+}
 
 const decode = (base64: string): Uint8Array => {
     const binaryString = atob(base64);
@@ -40,12 +49,18 @@ const Translator: React.FC = () => {
     const [fromLang, setFromLang] = useState<Language>(Language.INDONESIAN);
     const [toLang, setToLang] = useState<Language>(Language.BAKUMPAI);
     const [inputText, setInputText] = useState<string>('');
+    const [debouncedInputText, setDebouncedInputText] = useState<string>('');
     const [outputText, setOutputText] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [isSpeaking, setIsSpeaking] = useState<'input' | 'output' | null>(null);
+    const [isListening, setIsListening] = useState<boolean>(false);
     const [history, setHistory] = useState<TranslationHistoryItem[]>([]);
     const audioContextRef = useRef<AudioContext | null>(null);
+    const [analysis, setAnalysis] = useState<TextAnalysis | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
+    const [showCopyToast, setShowCopyToast] = useState<boolean>(false);
     
     useEffect(() => {
         try {
@@ -55,6 +70,64 @@ const Translator: React.FC = () => {
             setHistory([]);
         }
     }, []);
+
+    // Debounce effect for inputText
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedInputText(inputText);
+        }, 500); // 500ms delay
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [inputText]);
+    
+    // Streaming translation effect
+    useEffect(() => {
+        if (!debouncedInputText.trim()) {
+            setOutputText('');
+            setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+        setOutputText('');
+        setAnalysis(null);
+
+        let isCancelled = false;
+        let finalTranslation = '';
+        
+        translateTextStream(
+            debouncedInputText,
+            fromLang,
+            toLang,
+            (chunk) => { // onUpdate
+                if (!isCancelled) {
+                    setOutputText(prev => prev + chunk);
+                }
+            },
+            (fullText) => { // onComplete
+                if(!isCancelled){
+                    finalTranslation = fullText;
+                    setIsLoading(false);
+                    addToHistory({ from: fromLang, to: toLang, inputText: debouncedInputText, outputText: finalTranslation });
+                }
+            },
+            (err) => { // onError
+                if(!isCancelled) {
+                    setError(err.message);
+                    setIsLoading(false);
+                }
+            }
+        );
+        
+        return () => {
+            isCancelled = true;
+        };
+
+    }, [debouncedInputText, fromLang, toLang]);
+
 
     const addToHistory = (item: Omit<TranslationHistoryItem, 'id' | 'date'>) => {
         setHistory(prev => {
@@ -67,35 +140,33 @@ const Translator: React.FC = () => {
         });
     };
 
-    const handleTranslate = useCallback(async () => {
-        if (!inputText.trim()) {
-            setOutputText('');
-            return;
-        }
-        setIsLoading(true);
-        setError(null);
-        setOutputText('');
-
+    const handleAnalyze = async () => {
+        if (!inputText.trim() || isAnalyzing) return;
+        setIsAnalyzing(true);
+        setAnalysisError(null);
+        setAnalysis(null);
         try {
-            const result = await translateText(inputText, fromLang, toLang);
-            setOutputText(result);
-            addToHistory({ from: fromLang, to: toLang, inputText, outputText: result });
+            const result = await analyzeText(inputText);
+            setAnalysis(result);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            setAnalysisError(err instanceof Error ? err.message : 'Failed to analyze.');
         } finally {
-            setIsLoading(false);
+            setIsAnalyzing(false);
         }
-    }, [inputText, fromLang, toLang]);
+    };
 
     const handleSwapLanguages = useCallback(() => {
         setFromLang(toLang);
         setToLang(fromLang);
         setInputText(outputText);
         setOutputText(inputText);
+        setAnalysis(null);
     }, [fromLang, toLang, inputText, outputText]);
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
+        setShowCopyToast(true);
+        setTimeout(() => setShowCopyToast(false), 2000);
     };
 
     const handleTextToSpeech = async (text: string, type: 'input' | 'output') => {
@@ -132,12 +203,40 @@ const Translator: React.FC = () => {
             setIsSpeaking(null);
         }
     };
+
+    const handleListen = () => {
+        if (!recognition) {
+            setError("Speech recognition is not supported in this browser.");
+            return;
+        }
+
+        if (isListening) {
+            recognition.stop();
+            setIsListening(false);
+            return;
+        }
+
+        setIsListening(true);
+        recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            setInputText(transcript);
+        };
+        recognition.onend = () => {
+            setIsListening(false);
+        };
+        recognition.onerror = (event: any) => {
+            setError(`Speech recognition error: ${event.error}`);
+            setIsListening(false);
+        };
+        recognition.start();
+    };
     
     const useHistoryItem = (item: TranslationHistoryItem) => {
         setFromLang(item.from);
         setToLang(item.to);
         setInputText(item.inputText);
         setOutputText(item.outputText);
+        setAnalysis(null);
     };
 
     const clearHistory = () => {
@@ -170,32 +269,44 @@ const Translator: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
-                    <div className="relative">
+                    <div className="relative group">
                         <textarea
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
                             placeholder={`Enter text in ${fromLang}...`}
-                            className="w-full h-64 p-4 bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-brand-primary transition-all duration-300"
+                            className="w-full h-64 p-4 pr-10 bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-brand-primary transition-all duration-300"
                         />
+                        {inputText && (
+                             <button onClick={() => setInputText('')} className="absolute top-3 right-3 text-medium-light-text dark:text-medium-text hover:text-dark-text dark:hover:text-light-text transition-colors opacity-0 group-hover:opacity-100">
+                                <XCircleIcon />
+                            </button>
+                        )}
+                        <div className="absolute bottom-3 left-3 flex items-center space-x-2">
+                           {recognition && (
+                                <button onClick={handleListen} className={`p-2 rounded-full transition-colors ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-dark-border/10 dark:bg-dark-border/50 hover:bg-dark-border/20 dark:hover:bg-dark-border'}`}>
+                                    <MicrophoneIcon />
+                                </button>
+                           )}
+                        </div>
                         <div className="absolute bottom-3 right-3 flex items-center space-x-2">
                             <span className="text-xs text-medium-light-text dark:text-medium-text">{inputText.length} / 5000</span>
                             <button onClick={() => handleTextToSpeech(inputText, 'input')} disabled={!inputText || !!isSpeaking} className="p-2 rounded-full bg-dark-border/10 dark:bg-dark-border/50 hover:bg-dark-border/20 dark:hover:bg-dark-border transition-colors disabled:opacity-50">
                                 {isSpeaking === 'input' ? <Spinner /> : <SpeakerWaveIcon />}
                             </button>
-                            <button onClick={() => copyToClipboard(inputText)} className="p-2 rounded-full bg-dark-border/10 dark:bg-dark-border/50 hover:bg-dark-border/20 dark:hover:bg-dark-border transition-colors">
+                            <button onClick={() => copyToClipboard(inputText)} disabled={!inputText} className="p-2 rounded-full bg-dark-border/10 dark:bg-dark-border/50 hover:bg-dark-border/20 dark:hover:bg-dark-border transition-colors disabled:opacity-50">
                                 <DocumentDuplicateIcon />
                             </button>
                         </div>
                     </div>
                      <div className="relative bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-lg p-4 h-64 overflow-y-auto">
-                        {isLoading ? (
+                        {isLoading && !outputText ? (
                             <div className="flex justify-center items-center h-full">
                                 <Spinner />
                             </div>
                         ) : error ? (
                             <div className="text-red-500 dark:text-red-400">{error}</div>
                         ) : (
-                            <p className="whitespace-pre-wrap">{outputText}</p>
+                            <p className="whitespace-pre-wrap">{outputText}{isLoading && <span className="inline-block w-2 h-4 bg-brand-primary animate-pulse ml-1"></span>}</p>
                         )}
                         {!isLoading && outputText && (
                              <div className="absolute bottom-3 right-3 flex space-x-2">
@@ -209,15 +320,29 @@ const Translator: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="mt-6 text-center">
+                <div className="mt-6 flex justify-center items-center gap-4">
                     <button 
-                        onClick={handleTranslate} 
-                        disabled={isLoading}
-                        className="bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold py-3 px-10 rounded-full hover:scale-105 transform transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                        onClick={handleAnalyze} 
+                        disabled={isAnalyzing || !inputText}
+                        className="flex items-center gap-2 bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border font-bold py-3 px-6 rounded-full hover:scale-105 hover:border-brand-accent transform transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {isLoading ? 'Translating...' : 'Translate'}
+                        <SparklesIcon className="text-brand-accent"/>
+                        {isAnalyzing ? 'Analyzing...' : 'Analyze'}
                     </button>
                 </div>
+                {(analysis || analysisError) && (
+                     <div className="mt-6 p-4 bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-lg animate-fade-in">
+                        <h4 className="font-semibold text-lg mb-2">Text Analysis</h4>
+                        {analysisError ? (
+                             <p className="text-red-500 dark:text-red-400">{analysisError}</p>
+                        ): analysis && (
+                            <div className="space-y-2 text-sm">
+                                <p><strong>Tone:</strong> <span className="bg-brand-primary/10 text-brand-primary font-medium py-0.5 px-2 rounded-full">{analysis.tone}</span></p>
+                                <p><strong>Summary:</strong> {analysis.summary}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
              <div className="lg:col-span-1 bg-light-card dark:bg-dark-card p-6 rounded-lg shadow-lg">
                 <div className="flex justify-between items-center mb-4">
@@ -238,6 +363,11 @@ const Translator: React.FC = () => {
                     )) : <p className="text-medium-light-text dark:text-medium-text text-sm text-center mt-4">Your translation history will appear here.</p>}
                 </ul>
             </div>
+            {showCopyToast && (
+                <div className="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg animate-fade-in">
+                    Copied to clipboard!
+                </div>
+            )}
         </div>
     );
 };

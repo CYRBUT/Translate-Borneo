@@ -48,7 +48,7 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-This project runs in an environment where Node.js is available to manage environment variables.
+You will need a **Google Gemini API Key** to run this project. You can get one for free from [Google AI Studio](https://ai.google.dev/aistudio).
 
 ### Installation & Setup
 
@@ -57,10 +57,8 @@ This project runs in an environment where Node.js is available to manage environ
     git clone https://github.com/your-repository-url/borneo.git
     cd borneo
     ```
-2.  **Set up your Environment Variable:**
-    The application requires a Google Gemini API key to function. You must set this key as an environment variable named `API_KEY`.
-
-    How you set this variable depends on your hosting or development environment. For local development, you can use a `.env` file with a tool like `vite` or `dotenv`.
+2.  **Set up your Environment Variable (for Local Development):**
+    For local development, the easiest way to provide your API key is to use a `.env` file. The application is configured to automatically use this file if it exists.
 
     - Create a file named `.env` in the root of your project.
     - Add your API key to it:
@@ -74,6 +72,12 @@ This project runs in an environment where Node.js is available to manage environ
     npm run dev
     ```
     Then, open your browser to the provided local address.
+
+## 🌐 Deployment (e.g., on GitHub Pages)
+
+When you deploy this application to a static hosting service like GitHub Pages, the `.env` file method will not work.
+
+Instead, the application is designed to ask the user for their Gemini API key on their first visit. The key is then stored securely in the browser's `localStorage` and used for all subsequent API calls. This ensures that your personal API key is never exposed in the public source code. The user is responsible for providing their own key when using the live, hosted version of the app.
 
 ## 🛠️ Built With
 

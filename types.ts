@@ -69,4 +69,10 @@ export interface CulturalPost {
     imageUrl: string; // Base64 encoded image
     text: string;
     date: string;
+    likes?: number;
+}
+
+export interface TextAnalysis {
+    tone: string;
+    summary: string;
 }

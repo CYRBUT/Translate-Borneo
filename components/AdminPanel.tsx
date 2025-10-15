@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { SOCIAL_LINKS } from '../constants';
 import { Language, UploadHistoryItem, Donation, Comment } from '../types';
-import { ArrowUpOnSquareIcon, LogoutIcon, ChartBarIcon, CurrencyDollarIcon } from './icons/HeroIcons';
+import { ArrowUpOnSquareIcon, LogoutIcon, ChartBarIcon, CurrencyDollarIcon, ChartPieIcon } from './icons/HeroIcons';
 import { InstagramIcon, TelegramIcon, TikTokIcon, GitHubIcon } from './icons/SocialIcons';
 import LanguageSelector from './LanguageSelector';
 import { updateCustomDictionary } from '../services/geminiService';
@@ -76,14 +76,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
     }, [uploadHistory]);
 
     const ratingData = comments.reduce((acc, comment) => {
-        const rating = comment.rating;
-        const key = `${rating} star`;
-        if(!acc[key]) acc[key] = 0;
-        acc[key]++;
+        if(comment.rating > 0) {
+            const key = `${comment.rating} star`;
+            if(!acc[key]) acc[key] = 0;
+            acc[key]++;
+        }
         return acc;
     }, {} as {[key: string]: number});
 
     const totalDonations = donations.reduce((sum, d) => sum + d.amount, 0);
+
+    const donationTrendData = () => {
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            return d.toISOString().split('T')[0];
+        }).reverse();
+
+        const dailyTotals = last7Days.reduce((acc, date) => {
+            acc[date] = 0;
+            return acc;
+        }, {} as Record<string, number>);
+
+        donations.forEach(donation => {
+            const donationDate = new Date(donation.date).toISOString().split('T')[0];
+            if (dailyTotals[donationDate] !== undefined) {
+                dailyTotals[donationDate] += donation.amount;
+            }
+        });
+
+        return last7Days.map(date => ({
+            label: new Date(date).toLocaleDateString('en-US', { weekday: 'short' }),
+            value: dailyTotals[date],
+        }));
+    };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files[0]) {
@@ -105,7 +131,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                 const parts = line.split(',');
                 if (parts.length >= 2) {
                     const source = parts[0].trim();
-                    // Handle cases where the target might contain commas
                     const target = parts.slice(1).join(',').trim();
                     if (source && target) {
                         updateCustomDictionary(fromLang, toLang, source, target);
@@ -143,11 +168,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                     <p className="text-3xl font-bold text-green-500">Rp {totalDonations.toLocaleString('id-ID')}</p>
                     <p className="text-sm text-medium-light-text dark:text-medium-text">from {donations.length} supporters</p>
                 </Section>
-            </div>
-            <div className="lg:col-span-2 space-y-8">
-                 <Section title="Rating Summary" icon={<ChartBarIcon />}>
+                <Section title="Rating Summary" icon={<ChartPieIcon />}>
                     <div className="h-64">
                          <PieChart data={ratingData} />
+                    </div>
+                </Section>
+            </div>
+            <div className="lg:col-span-2 space-y-8">
+                 <Section title="Donation Trend (Last 7 Days)" icon={<ChartBarIcon />}>
+                    <div className="h-64">
+                         <LineChart data={donationTrendData()} color="#22c55e"/>
                     </div>
                 </Section>
                 <Section title="Improve Dictionary" icon={<ArrowUpOnSquareIcon />}>
