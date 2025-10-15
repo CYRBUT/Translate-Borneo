@@ -10,6 +10,7 @@ export enum View {
     COMMENTS,
     DONATIONS,
     LEARN,
+    ABOUT,
 }
 
 export enum UserRole {

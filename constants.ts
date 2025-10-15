@@ -13,6 +13,7 @@ export const SOCIAL_LINKS = {
     instagram: 'https://instagram.com',
     telegram: 'https://telegram.org',
     tiktok: 'https://tiktok.com',
+    github: 'https://github.com/bangindra123',
 };
 
 // Mock data now uses ISO date strings for consistency with localStorage

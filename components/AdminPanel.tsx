@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { SOCIAL_LINKS } from '../constants';
 import { Language, UploadHistoryItem, Donation, Comment } from '../types';
 import { ArrowUpOnSquareIcon, LogoutIcon, ChartBarIcon, CurrencyDollarIcon } from './icons/HeroIcons';
-import { InstagramIcon, TelegramIcon, TikTokIcon } from './icons/SocialIcons';
+import { InstagramIcon, TelegramIcon, TikTokIcon, GitHubIcon } from './icons/SocialIcons';
 import LanguageSelector from './LanguageSelector';
 import { updateCustomDictionary } from '../services/geminiService';
 import { PieChart, LineChart } from './charts';
@@ -18,6 +18,7 @@ const ProfileCard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => (
             <a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer" className="text-medium-light-text dark:text-medium-text hover:text-brand-accent transition-colors"><InstagramIcon /></a>
             <a href={SOCIAL_LINKS.telegram} target="_blank" rel="noopener noreferrer" className="text-medium-light-text dark:text-medium-text hover:text-brand-accent transition-colors"><TelegramIcon /></a>
             <a href={SOCIAL_LINKS.tiktok} target="_blank" rel="noopener noreferrer" className="text-medium-light-text dark:text-medium-text hover:text-brand-accent transition-colors"><TikTokIcon /></a>
+            <a href={SOCIAL_LINKS.github} target="_blank" rel="noopener noreferrer" className="text-medium-light-text dark:text-medium-text hover:text-brand-accent transition-colors"><GitHubIcon /></a>
         </div>
         <button
             onClick={onLogout}
@@ -177,7 +178,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                             </li>
                         )) : <p className="text-medium-light-text dark:text-medium-text text-sm">No files uploaded yet.</p>}
                     </ul>
-                </section>
+                </Section>
             </div>
             {showSuccessToast && (
                 <div className="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg animate-fade-in">

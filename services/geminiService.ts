@@ -1,38 +1,19 @@
-
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Language } from "../types";
-import { getApiKey as getStoredApiKey } from './apiKeyService';
 
 let ai: GoogleGenAI | null = null;
 
-// Function to get API key from the centralized service, then fallback to environment variables
-export const getApiKey = (): string | null => {
-    try {
-        return getStoredApiKey('gemini') || process.env.API_KEY || null;
-    } catch (e) {
-        // This might catch errors if the environment is very restrictive, though unlikely.
-        return process.env.API_KEY || null;
-    }
-};
-
 // Initializes the GoogleGenAI client
 const initializeAi = () => {
-    const apiKey = getApiKey();
+    const apiKey = process.env.API_KEY;
     if (apiKey) {
         ai = new GoogleGenAI({ apiKey });
         console.log("Gemini AI client initialized successfully.");
     } else {
         ai = null;
-        console.warn("API Key not found. Please set your Gemini API key in the application settings.");
+        console.error("API Key not found. Please set the API_KEY environment variable.");
     }
 };
-
-// Re-initializes the AI client whenever the key might have changed.
-// This is now called from the ApiKeyModal after saving.
-export const reinitializeAi = () => {
-    initializeAi();
-};
-
 
 // Initial call to set up the client on load
 initializeAi();
@@ -76,7 +57,7 @@ export const translateText = async (
     to: Language
 ): Promise<string> => {
     if (!ai) {
-        throw new Error("API Key not configured. Please set it in the settings.");
+        throw new Error("API Key not configured. Please set the API_KEY environment variable.");
     }
 
     const dictionary = getCustomDictionary();

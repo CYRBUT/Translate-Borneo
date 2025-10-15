@@ -5,11 +5,11 @@ import AdminPanel from './components/AdminPanel';
 import Comments from './components/Comments';
 import Donations from './components/Donations';
 import LoginModal from './components/LoginModal';
-import SocialLinks from './components/SocialLinks';
 import Learn from './components/Learn';
-import ApiKeyModal from './components/ApiKeyModal';
-import { getApiKey } from './services/geminiService';
+import About from './components/About';
 import { View, UserRole } from './types';
+import { isApiKeySet } from './services/apiKeyService';
+import ApiKeyModal from './components/ApiKeyModal';
 
 type Theme = 'light' | 'dark';
 
@@ -17,13 +17,12 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.TRANSLATOR);
   const [userRole, setUserRole] = useState<UserRole>(UserRole.GUEST);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
+  const [apiKeyMissing, setApiKeyMissing] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check for API key on initial load
-    if (!getApiKey()) {
-      setIsApiKeyModalOpen(true);
+    if (!isApiKeySet()) {
+      setApiKeyMissing(true);
     }
 
     const savedTheme = localStorage.getItem('theme') as Theme | null;
@@ -64,14 +63,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleApiKeySaved = () => {
-    setIsApiKeyModalOpen(false);
-    // You might want to refresh the current view or show a success message
-    // For now, just closing the modal is enough as the service is re-initialized.
-  };
-
   const renderView = useCallback(() => {
     switch (currentView) {
+      case View.ABOUT:
+        return <About />;
       case View.ADMIN:
         return userRole === UserRole.ADMIN ? <AdminPanel onLogout={handleLogout} /> : <Translator />;
       case View.COMMENTS:
@@ -86,13 +81,16 @@ const App: React.FC = () => {
     }
   }, [currentView, userRole]);
 
+  if (apiKeyMissing) {
+    return <ApiKeyModal />;
+  }
+
   return (
     <div className="min-h-screen font-sans flex flex-col">
       <Header
         currentView={currentView}
         setCurrentView={setCurrentView}
         onAdminClick={handleAuthClick}
-        onApiKeyClick={() => setIsApiKeyModalOpen(true)}
         userRole={userRole}
         theme={theme}
         toggleTheme={toggleTheme}
@@ -101,11 +99,9 @@ const App: React.FC = () => {
         {renderView()}
       </main>
       <footer className="text-center py-6 text-medium-light-text dark:text-medium-text text-sm flex flex-col items-center gap-4">
-        <SocialLinks />
         <p>Borneo &copy; 2024. Powered by Gemini.</p>
       </footer>
       {isLoginModalOpen && <LoginModal onClose={() => setIsLoginModalOpen(false)} onLoginSuccess={handleLoginSuccess} />}
-      {isApiKeyModalOpen && <ApiKeyModal onClose={() => setIsApiKeyModalOpen(false)} onKeySaved={handleApiKeySaved} />}
     </div>
   );
 };

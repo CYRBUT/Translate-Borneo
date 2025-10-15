@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { SOCIAL_LINKS } from '../constants';
-import { InstagramIcon, TelegramIcon, TikTokIcon } from './icons/SocialIcons';
+import { InstagramIcon, TelegramIcon, TikTokIcon, GitHubIcon } from './icons/SocialIcons';
 
 const SocialLinks: React.FC = () => {
     return (
@@ -14,6 +14,9 @@ const SocialLinks: React.FC = () => {
             </a>
             <a href={SOCIAL_LINKS.tiktok} target="_blank" rel="noopener noreferrer" className="text-medium-text hover:text-brand-accent transition-colors duration-300">
                 <TikTokIcon className="h-7 w-7" />
+            </a>
+            <a href={SOCIAL_LINKS.github} target="_blank" rel="noopener noreferrer" className="text-medium-text hover:text-brand-accent transition-colors duration-300">
+                <GitHubIcon className="h-7 w-7" />
             </a>
         </div>
     );

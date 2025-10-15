@@ -1,13 +1,12 @@
 
 import React from 'react';
 import { View, UserRole } from '../types';
-import { TranslateIcon, UserCircleIcon, ChatBubbleLeftRightIcon, GiftIcon, LoginIcon, SparklesIcon, SunIcon, MoonIcon, KeyIcon } from './icons/HeroIcons';
+import { TranslateIcon, UserCircleIcon, ChatBubbleLeftRightIcon, GiftIcon, LoginIcon, SparklesIcon, SunIcon, MoonIcon } from './icons/HeroIcons';
 
 interface HeaderProps {
   currentView: View;
   setCurrentView: (view: View) => void;
   onAdminClick: () => void;
-  onApiKeyClick: () => void;
   userRole: UserRole;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
@@ -47,18 +46,20 @@ const NavButton: React.FC<{
   );
 };
 
-const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView, onAdminClick, onApiKeyClick, userRole, theme, toggleTheme }) => {
+const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView, onAdminClick, userRole, theme, toggleTheme }) => {
   const isAdmin = userRole === UserRole.ADMIN;
 
   return (
     <header className="bg-light-card/80 dark:bg-dark-card/80 backdrop-blur-sm sticky top-0 z-50 shadow-md dark:shadow-black/20">
       <nav className="container mx-auto px-4 py-3 flex justify-between items-center">
-        <Logo />
+        <button onClick={() => setCurrentView(View.ABOUT)} className="transition-opacity hover:opacity-80 rounded-lg" aria-label="About page">
+            <Logo />
+        </button>
         <div className="flex items-center space-x-1 sm:space-x-2">
           <NavButton 
             label="Translator" 
             icon={<TranslateIcon />}
-            isActive={currentView === View.TRANSLATOR}
+            isActive={currentView === View.TRANSLATOR || currentView === View.ABOUT}
             onClick={() => setCurrentView(View.TRANSLATOR)}
           />
            <NavButton 
@@ -87,9 +88,6 @@ const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView, onAdminCli
           />
            <button onClick={toggleTheme} className="p-2 rounded-lg transition-colors duration-300 hover:bg-light-border dark:hover:bg-dark-border" aria-label="Toggle theme">
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-          </button>
-          <button onClick={onApiKeyClick} className="p-2 rounded-lg transition-colors duration-300 hover:bg-light-border dark:hover:bg-dark-border" aria-label="Set API Key">
-              <KeyIcon />
           </button>
         </div>
       </nav>
